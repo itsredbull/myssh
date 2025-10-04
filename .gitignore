@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# User data - DO NOT COMMIT
+.ssh_vpn_profiles.json
+
+# Temporary files
+/tmp/
+*.log
+*.pid
+*.conf
+/tmp_*
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

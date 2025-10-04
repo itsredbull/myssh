@@ -1,0 +1,6 @@
+# SSH VPN Pro - Python Requirements
+# Install with: pip3 install -r requirements.txt
+
+# GUI and System Tray
+Pillow>=10.0.0
+pystray>=0.19.0

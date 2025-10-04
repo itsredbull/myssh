@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SSH VPN Pro
+Comment=Professional SSH VPN Client with Tunnel Management
+Exec=bash -c "cd /home/redbull/projects/myssh && python3 ssh_vpn_modern.py"
+Icon=ssh-vpn-pro
+Terminal=false
+Categories=Network;Security;System;
+Keywords=vpn;ssh;tunnel;proxy;network;security;
+StartupNotify=true
+StartupWMClass=Ssh-vpn-pro
+Path=/home/redbull/projects/myssh
