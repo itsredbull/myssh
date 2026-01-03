@@ -14,6 +14,15 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+echo "--- Pre-installation Cleanup ---"
+# remove old files to ensure a clean install
+rm -rf "/usr/local/lib/ssh-vpn-pro"
+rm -f "/usr/local/bin/ssh-vpn-pro"
+rm -f "/usr/share/applications/ssh-vpn-pro.desktop"
+rm -f "/usr/share/pixmaps/ssh-vpn-pro.png"
+echo "--- Cleanup Complete ---"
+echo ""
+
 echo "Installing SSH VPN Pro to $LIB_DIR ..."
 
 # create lib dir

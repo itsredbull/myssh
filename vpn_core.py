@@ -1,9 +1,9 @@
-"Core VPN functionality for SSH VPN Pro
+"""Core VPN functionality for SSH VPN Pro
 - Centralized network setup and cleanup
 - systemd-resolved support for modern DNS handling on Linux
 - IPv6 leak protection
 - Fallback to legacy resolv.conf modification
-"
+"""
 
 import subprocess
 import paramiko
@@ -41,14 +41,32 @@ def _uses_systemd_resolved():
 def _get_default_interface():
     """Get the default network interface device name."""
     try:
-        # ip route get 1.1.1.1 | grep -oP 'dev \K\w+'
+        # First, try the specific route method, which is often more accurate
+        # for complex routing tables (e.g., multiple default routes).
         result = subprocess.run(
-            "ip route get 1.1.1.1 | grep -oP 'dev \\K\\w+'",
-            shell=True, check=True, capture_output=True, text=True
+            ['ip', 'route', 'get', '1.1.1.1'],
+            check=True, capture_output=True, text=True
         )
-        return result.stdout.strip()
-    except Exception:
-        return None
+        # Example output: "1.1.1.1 via 192.168.1.1 dev eth0 src 192.168.1.100 uid 1000"
+        parts = result.stdout.strip().split()
+        if 'dev' in parts:
+            return parts[parts.index('dev') + 1]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # If the first method fails, fall back to parsing the main routing table.
+        try:
+            result = subprocess.run(
+                ['ip', 'route'],
+                check=True, capture_output=True, text=True
+            )
+            # Find the line starting with 'default'
+            for line in result.stdout.splitlines():
+                if line.startswith('default'):
+                    parts = line.split()
+                    if 'dev' in parts:
+                        return parts[parts.index('dev') + 1]
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return None # Both methods failed
+    return None
 
 def _configure_dns(dns_servers, log_callback):
     """
