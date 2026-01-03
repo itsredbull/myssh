@@ -93,8 +93,8 @@ else
 fi
 
 # Ensure pip installed packages available (pystray plus any missing)
-echo "Installing pystray and ensuring paramiko/Pillow via pip fallback if needed..."
+echo "Installing Python packages from requirements.txt via pip..."
 python3 -m pip install --upgrade pip setuptools wheel 2>/dev/null || true
-python3 -m pip install pystray paramiko Pillow 2>/dev/null || true
+python3 -m pip install -r "$SCRIPT_DIR/requirements.txt" 2>/dev/null || true
 
 echo "Installation complete. You can launch from the menu or run: ssh-vpn-pro"

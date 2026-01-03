@@ -13,15 +13,40 @@ import os
 import json
 import math
 import socket
+import sys
 from pathlib import Path
 from datetime import datetime
 
+# Add potential library locations to sys.path for robust import
+# This helps if the app is run directly without the wrapper script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+lib_dir = "/usr/local/lib/ssh-vpn-pro"
+sys.path.insert(0, script_dir)
+if os.path.isdir(lib_dir):
+    sys.path.insert(0, lib_dir)
+
 try:
-    from vpn_core import test_ssh_connection, create_tun_vpn, check_udpgw_status, create_stunnel_config, start_stunnel
+    from vpn_core import test_ssh_connection, create_tun_vpn, check_udpgw_status, create_stunnel_config, start_stunnel, cleanup_network
     VPN_CORE_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     VPN_CORE_AVAILABLE = False
-    print("Warning: vpn_core.py not found")
+    # Provide a more informative error message
+    def vpn_core_not_found(*args, **kwargs):
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(
+            "Fatal Error",
+            f"Could not import vpn_core.py.\n\n"
+            f"Error: {e}\n\n"
+            f"Please ensure the application is installed correctly. Try running:\n"
+            f"sudo ./install.sh"
+        )
+        sys.exit(1)
+
+    # Overwrite functions that will fail
+    test_ssh_connection = create_tun_vpn = check_udpgw_status = create_stunnel_config = start_stunnel = cleanup_network = vpn_core_not_found
+    print("FATAL: vpn_core.py not found, the application cannot function.")
+
 
 try:
     import pystray
@@ -243,6 +268,7 @@ class SSHVPNPro:
         self.profiles = {}
         self.current_profile = None
         self.profiles_file = Path.home() / '.ssh_vpn_profiles.json'
+        self.vpn_info = None # Holds info from vpn_core for cleanup
 
         # Security: Ensure profile file has secure permissions on load
         if self.profiles_file.exists():
@@ -763,7 +789,7 @@ class SSHVPNPro:
                 bg=COLORS['bg_dark'],
                 fg=COLORS['text_white']).pack(pady=(50, 10))
 
-        tk.Label(self.about_frame, text="v4.0.0",
+        tk.Label(self.about_frame, text="v4.1.0",
                 font=('Segoe UI', 14),
                 bg=COLORS['bg_dark'],
                 fg=COLORS['text_gray']).pack(pady=5)
@@ -956,12 +982,12 @@ Built with Python & Tkinter
                 ssh_port = port
                 self.log("✅ SSH OK")
 
-            success, tunnel = create_tun_vpn(ssh_host, ssh_port, username, auth_method, password, ssh_key_path,
+            success, vpn_info = create_tun_vpn(ssh_host, ssh_port, username, auth_method, password, ssh_key_path,
                                              int(udpgw_port), dns, self.log)
 
             if success:
-                # tunnel is now a tuple: (tunnel_process, ssh_process)
-                self.tunnel_process = tunnel
+                # vpn_info contains all processes and network state
+                self.vpn_info = vpn_info 
                 self.root.after(0, self._connection_success, host)
             else:
                 self.log("❌ Tunnel failed")
@@ -1012,31 +1038,10 @@ Built with Python & Tkinter
             pass
 
     def _connection_failed(self):
-        # Clean up any running processes
-        self.log("🧹 Cleaning up failed connection...")
-
-        # Kill stunnel if running
-        if self.stunnel_process:
-            try:
-                self.stunnel_process.terminate()
-                self.stunnel_process.wait(timeout=3)
-            except:
-                try:
-                    self.stunnel_process.kill()
-                except:
-                    pass
-            self.stunnel_process = None
-
-        # Kill any leftover processes
-        try:
-            subprocess.run(['pkill', '-f', 'stunnel'], check=False, timeout=5)
-            subprocess.run(['pkill', '-f', 'badvpn-tun2socks'], check=False, timeout=5)
-            subprocess.run(['pkill', '-f', 'badvpn-udpgw'], check=False, timeout=5)
-        except:
-            pass
-
+        self.log("❌ Connection failed. Check logs for details.")
+        # No need for manual cleanup here, vpn_core's create_tun_vpn handles it
         self.status_label.config(text="Failed", fg=COLORS['accent_red'])
-        self.status_subtitle.config(text="Check credentials")
+        self.status_subtitle.config(text="Check credentials/logs")
         self.connect_button.set_disconnected()
         self.update_tray_icon('disconnected')
 
@@ -1044,104 +1049,23 @@ Built with Python & Tkinter
         self.log("🔄 Disconnecting...")
         self.stop_uptime_timer()
 
-        # Kill stunnel if running
+        if VPN_CORE_AVAILABLE:
+            # Centralized cleanup
+            cleanup_network(self.vpn_info, self.log)
+        
+        # Kill stunnel if it was running
         if self.stunnel_process:
             try:
-                self.log("🔐 Stopping stunnel...")
                 self.stunnel_process.terminate()
-                self.stunnel_process.wait(timeout=3)
+                self.stunnel_process.wait(timeout=2)
             except:
-                try:
-                    self.stunnel_process.kill()
-                except:
-                    pass
+                try: self.stunnel_process.kill() 
+                except: pass
             self.stunnel_process = None
-
-        # Kill tunnel processes (now a tuple of (tunnel_process, ssh_process))
-        if self.tunnel_process:
-            try:
-                if isinstance(self.tunnel_process, tuple):
-                    tunnel_proc, ssh_proc = self.tunnel_process
-                    tunnel_proc.terminate()
-                    ssh_proc.terminate()
-                    tunnel_proc.wait(timeout=5)
-                    ssh_proc.wait(timeout=5)
-                else:
-                    self.tunnel_process.terminate()
-                    self.tunnel_process.wait(timeout=5)
-            except:
-                try:
-                    if isinstance(self.tunnel_process, tuple):
-                        self.tunnel_process[0].kill()
-                        self.tunnel_process[1].kill()
-                    else:
-                        self.tunnel_process.kill()
-                except:
-                    pass
-
-        # Kill all VPN processes
-        try:
-            subprocess.run(['pkill', '-f', 'ssh_socks_simple.py'], check=False, timeout=5)
-            subprocess.run(['pkill', '-f', 'badvpn-tun2socks'], check=False, timeout=5)
-            subprocess.run(['pkill', '-f', 'badvpn-udpgw'], check=False, timeout=5)
-            subprocess.run(['pkill', '-f', 'stunnel'], check=False, timeout=5)
-        except:
-            pass
-
-        # Cleanup TUN interface (needs root) - with short timeout
-        self.log("🧹 Cleaning up network (enter password within 15 seconds)...")
-        cleanup_success = False
-
-        try:
-            cleanup_script = '''#!/bin/bash
-pkill -f badvpn-tun2socks 2>/dev/null
-pkill -f badvpn-udpgw 2>/dev/null
-ip link set tun0 down 2>/dev/null
-ip tuntap del dev tun0 mode tun 2>/dev/null
-cp /tmp/resolv.conf.backup /etc/resolv.conf 2>/dev/null || true
-sysctl -w net.ipv6.conf.all.disable_ipv6=0 >/dev/null 2>&1
-sysctl -w net.ipv6.conf.default.disable_ipv6=0 >/dev/null 2>&1
-exit 0
-'''
-            with open('/tmp/vpn_cleanup.sh', 'w') as f:
-                f.write(cleanup_script)
-            os.chmod('/tmp/vpn_cleanup.sh', 0o755)
-
-            # Try cleanup with short timeout
-            result = subprocess.run(['pkexec', 'bash', '/tmp/vpn_cleanup.sh'],
-                                   timeout=15, check=False, capture_output=True)
-
-            if result.returncode == 0:
-                cleanup_success = True
-                self.log("✅ Network cleanup complete")
-            else:
-                self.log("⚠️  Cleanup authentication timed out or cancelled")
-
-        except subprocess.TimeoutExpired:
-            self.log("⚠️  Cleanup timed out")
-        except Exception as e:
-            self.log(f"⚠️  Cleanup error: {e}")
-
-        # If cleanup failed, show recovery instructions
-        if not cleanup_success:
-            self.log("━" * 50)
-            self.log("⚠️  INTERNET MAY NOT WORK!")
-            self.log("To fix your internet, run this command in terminal:")
-            self.log("   sudo bash /tmp/vpn_cleanup.sh")
-            self.log("Or restart your computer to reset network")
-            self.log("━" * 50)
-
-            # Show popup warning
-            messagebox.showwarning(
-                "Network Cleanup Needed",
-                "VPN disconnected but network cleanup was cancelled.\n\n"
-                "Your internet may not work until you run:\n"
-                "   sudo bash /tmp/vpn_cleanup.sh\n\n"
-                "Or restart your computer."
-            )
 
         self.connected = False
         self.connection_start_time = None
+        self.vpn_info = None
 
         self.status_label.config(text="Not Connected", fg=COLORS['text_gray'])
         self.status_subtitle.config(text="Tap to connect")
