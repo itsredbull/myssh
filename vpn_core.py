@@ -1,9 +1,9 @@
-"Core VPN functionality for SSH VPN Pro
+"""Core VPN functionality for SSH VPN Pro
 - Centralized network setup and cleanup via single sudo prompt
 - systemd-resolved support for modern DNS handling on Linux
 - IPv6 leak protection
 - Prevents connection loop by adding explicit route for the SSH host
-"
+"""
 
 import subprocess
 import paramiko
