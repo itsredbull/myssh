@@ -72,7 +72,7 @@ Categories=Network;System;
 Keywords=vpn;ssh;tunnel;proxy;security;network;
 StartupNotify=true
 EOF
-install -m 644 "$DESKTOP_FILE" "$DESKTOP_FILE"
+chmod 644 "$DESKTOP_FILE"
 
 echo "Files installed."
 
